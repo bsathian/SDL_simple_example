@@ -80,6 +80,12 @@ namespace SDL
             // Multiplicity of mini-doublet formed in this event
             void incrementNumberOfMiniDoublets(SDL::Module& module);
 
+            //CUDA stuff
+            MiniDoublet* mdCandsGPU;
+            int mdGPUCounter;
+            void miniDoubletGPUWrapper(SDL::MDAlgo algo);
+
+
         public:
 
             // cnstr/destr

@@ -124,11 +124,49 @@ void SDL::Event::addHitToModule(SDL::Hit hit, unsigned int detId)
 
 void SDL::Event::createMiniDoublets(MDAlgo algo)
 {
+    cudaMallocManaged(&mdCandsGPU,100*100*sizeof(SDL::MiniDoublet));
+    mdGPUCounter = 0;
+    cudaDeviceSynchronize(); //Required?
+
     for (auto& lowerModulePtr : getLowerModulePtrs())
     {
         createMiniDoubletsFromLowerModule(lowerModulePtr->detId(), algo);
     }
+    
+    if(mdGPUCounter < 100*100 and mdGPUCounter > 0) //incomplete dudes from the final iteration
+    {
+        miniDoubletGPUWrapper(algo);
+    }
+
 }
+
+void SDL::Event::miniDoubletGPUWrapper(SDL::MDAlgo algo)
+{
+    int nThreads = 256;
+    int nBlocks = (mdGPUCounter % nThreads == 0) ? mdGPUCounter/nThreads : mdGPUCounter/nThreads + 1;
+    createMiniDoubletsInGPU <<<nBlocks, nThreads>>> (mdCandsGPU,mdGPUCounter,algo);
+    cudaError_t cudaerr = cudaDeviceSynchronize();
+    if (cudaerr != cudaSuccess)
+    {          
+        std::cout<<"kernel launch failed with error : "<<cudaGetErrorString(cudaerr)<<std::endl;    
+    }
+
+    for(int i = 0; i < mdGPUCounter; i++)
+    {
+        auto mdCand = mdCandsGPU[i];
+        if(mdCand.passesMiniDoubletAlgo(algo))
+        {
+            // Count the number of md formed
+            SDL::Module& lowerModule = (Module&)((mdCand.lowerHitPtr())->getModule()); 
+            incrementNumberOfMiniDoublets(lowerModule);
+
+            addMiniDoubletToEvent(mdCand, lowerModule.detId());
+        }
+    }
+    mdGPUCounter = 0; 
+   
+}
+
 
 void SDL::Event::createMiniDoubletsFromLowerModule(unsigned int detId, SDL::MDAlgo algo)
 {
@@ -140,10 +178,6 @@ void SDL::Event::createMiniDoubletsFromLowerModule(unsigned int detId, SDL::MDAl
     // Double nested loops
     // Loop over lower module hits
     //Number hardcoded from occupancy plots
-    SDL::MiniDoublet* mdCandsGPU;
-    cudaMallocManaged(&mdCandsGPU,100 * 100 * sizeof(SDL::MiniDoublet));
-    cudaDeviceSynchronize();
-    int counter = 0;
     for (auto& lowerHitPtr : lowerModule.getHitPtrs())
     {
         // Get reference to lower Hit
@@ -169,7 +203,14 @@ void SDL::Event::createMiniDoubletsFromLowerModule(unsigned int detId, SDL::MDAl
             }
             if(lowerModule.subdet() == SDL::Module::Endcap)
             {
-                mdCand.setLowerModuleSlope(SDL::endcapGeometry.getSlopeLower(lowerModule.detId()));
+                if(lowerModule.moduleType() == SDL::Module::PS and upperModule.moduleLayerType() == SDL::Module::Strip)
+                {
+                    mdCand.setLowerModuleSlope(SDL::endcapGeometry.getSlopeLower(upperModule.detId()));
+                }
+                else
+                {
+                    mdCand.setLowerModuleSlope(SDL::endcapGeometry.getSlopeLower(lowerModule.detId()));
+                }
             }
             else
             {
@@ -183,35 +224,18 @@ void SDL::Event::createMiniDoubletsFromLowerModule(unsigned int detId, SDL::MDAl
                     mdCand.setLowerModuleSlope(SDL::tiltedGeometry.getSlope(lowerModule.detId()));
                 }
             }
-	        memcpy(&mdCandsGPU[counter],&mdCand,sizeof(SDL::MiniDoublet));
-            counter++;
+            
+            mdCandsGPU[mdGPUCounter] = mdCand;
+            mdGPUCounter++;
+
+            if(mdGPUCounter == 100*100)
+            {
+                miniDoubletGPUWrapper(algo);
+            }
+            // Count the number of mdCand considered
             incrementNumberOfMiniDoubletCandidates(lowerModule);
         }
     }       
-    int nThreads = 32;
-    int nBlocks = (counter % nThreads == 0) ? counter/nThreads : counter/nThreads + 1;
-    if(counter > 0)
-    {
-        createMiniDoubletsInGPU <<<nBlocks, nThreads>>> (mdCandsGPU,counter,algo);
-        cudaError_t cudaerr = cudaDeviceSynchronize();
-        if (cudaerr != cudaSuccess)
-        {       
-            std::cout<<"kernel launch failed with error : "<<cudaGetErrorString(cudaerr)<<std::endl;    
-
-        }
-    }
-    for(int i = 0; i < counter; i++)
-    {
-        auto mdCand = mdCandsGPU[i];
-        if(mdCand.passesMiniDoubletAlgo(algo))
-        {
-            // Count the number of md formed
-            incrementNumberOfMiniDoublets(lowerModule);
-            addMiniDoubletToEvent(mdCand,detId);
-        }
-          
-    }
-    cudaFree(mdCandsGPU);
 }
 
 // Multiplicity of mini-doublets
