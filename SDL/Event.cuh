@@ -79,10 +79,17 @@ namespace SDL
 
             // Multiplicity of mini-doublet formed in this event
             void incrementNumberOfMiniDoublets(SDL::Module& module);
-
+            
             //CUDA stuff
+            Module* modulesInGPU;
+            Hit* hitsInGPU;
+            Hit* hits2sEdgeInGPU;
             MiniDoublet* mdCandsGPU;
+            MiniDoublet* mdsInGPU;
             int mdGPUCounter;
+            void  initModulesInGPU();
+            void initHitsInGPU();
+            void initMDsInGPU();
             void miniDoubletGPUWrapper(SDL::MDAlgo algo);
 
 
@@ -113,7 +120,8 @@ namespace SDL
             void createMiniDoublets(MDAlgo algo=Default_MDAlgo);
 
             // Create mini doublet for a module
-            void createMiniDoubletsFromLowerModule(unsigned int detId, MDAlgo algo=Default_MDAlgo);
+            void createMiniDoubletsFromLowerModule(unsigned int detId, int maxMDCands, MDAlgo algo=Default_MDAlgo);
+
 
             // Multiplicity of Hits
             unsigned int getNumberOfHits();
