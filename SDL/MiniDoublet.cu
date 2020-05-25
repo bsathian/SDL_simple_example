@@ -997,7 +997,7 @@ float SDL::MiniDoublet::moduleGapSize(const Module& lowerModule)
     float miniDeltaLooseTilted[] =  {0.4,0.4,0.4};
     //std::array<float, 6> miniDeltaEndcap {0.4, 0.4, 0.4, 0.18, 0.18, 0.18};
     float miniDeltaFlat[] =  {0.26, 0.16, 0.16, 0.18, 0.18, 0.18};
-    float miniDeltaEndcap[15][5];
+    float miniDeltaEndcap[5][15];
 
     for (size_t i = 0; i < 5; i++)
     {
