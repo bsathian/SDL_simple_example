@@ -92,6 +92,12 @@ namespace SDL
             void initMDsInGPU();
             void miniDoubletGPUWrapper(SDL::MDAlgo algo);
 
+            //counter variables
+            int moduleMemoryCounter;
+            int hitMemoryCounter;
+            int hit2SEdgeMemoryCounter;
+            int mdMemoryCounter;
+ 
 
         public:
 

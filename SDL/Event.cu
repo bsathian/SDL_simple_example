@@ -23,11 +23,21 @@ SDL::Event::Event() : logLevel_(SDL::Log_Nothing)
     n_miniDoublet_by_layer_barrel_.fill(0);
     n_miniDoublet_candidates_by_layer_endcap_.fill(0);
     n_miniDoublet_by_layer_endcap_.fill(0);
+
+    //counters
+    moduleMemoryCounter = 0;
+    hitMemoryCounter = 0;
+    hit2SEdgeMemoryCounter = 0;
+    mdMemoryCounter = 0;
     
 }
 
 SDL::Event::~Event()
 {
+    cudaFree(hitsInGPU);
+    cudaFree(modulesInGPU);
+    cudaFree(mdsInGPU);
+    cudaFree(mdCandsGPU);
 }
 
 bool SDL::Event::hasModule(unsigned int detId)
@@ -56,8 +66,7 @@ void SDL::Event::initModulesInGPU()
 SDL::Module* SDL::Event::getModule(unsigned int detId)
 {
     // using std::map::emplace
-    static int counter = 0;
-    if(counter == 0)
+    if(moduleMemoryCounter == 0)
     {
         initModulesInGPU();
     }
@@ -69,10 +78,10 @@ SDL::Module* SDL::Event::getModule(unsigned int detId)
     if (emplace_result.second) // if true, new was inserted
     {
         //cudaMallocManaged(&((*(emplace_result.first)).second),sizeof(SDL::Module));
-         (*(emplace_result.first)).second = &modulesInGPU[counter];
+         (*(emplace_result.first)).second = &modulesInGPU[moduleMemoryCounter];
 
         //*inserted_or_existing =SDL:: Module(detId);
-        modulesInGPU[counter] = SDL::Module(detId);
+        modulesInGPU[moduleMemoryCounter] = SDL::Module(detId);
         Module* module_ptr = inserted_or_existing;
         
         // Add the module pointer to the list of modules
@@ -81,7 +90,7 @@ SDL::Module* SDL::Event::getModule(unsigned int detId)
         if (module_ptr->isLower())
             lowerModulePtrs_.push_back(module_ptr);
        
-       counter++;
+       moduleMemoryCounter++;
 
     }
 
@@ -110,18 +119,16 @@ void SDL::Event::initHitsInGPU()
 void SDL::Event::addHitToModule(SDL::Hit hit, unsigned int detId)
 {
     // Add to global list of hits, where it will hold the object's instance
-    static int counter = 0;
-    static int counter2SEdge = 0;
     // And get the module (if not exists, then create), and add the address to Module.hits_
     //construct a cudaMallocManaged object and send that in, so that we won't have issues in the GPU
-    if(counter == 0)
+    if(hitMemoryCounter == 0)
     {
         initHitsInGPU();
     }
-    hitsInGPU[counter] = hit;
-    hitsInGPU[counter].setModule(getModule(detId));
-    getModule(detId)->addHit(&hitsInGPU[counter]);
-    hits_.push_back(hitsInGPU[counter]);
+    hitsInGPU[hitMemoryCounter] = hit;
+    hitsInGPU[hitMemoryCounter].setModule(getModule(detId));
+    getModule(detId)->addHit(&hitsInGPU[hitMemoryCounter]);
+    hits_.push_back(hitsInGPU[hitMemoryCounter]);
 
 
     // Count number of hits in the event
@@ -131,22 +138,22 @@ void SDL::Event::addHitToModule(SDL::Hit hit, unsigned int detId)
     if (getModule(detId)->subdet() == SDL::Module::Endcap and getModule(detId)->moduleType() == SDL::Module::TwoS)
     {
          
-        hits2sEdgeInGPU[counter2SEdge] = GeometryUtil::stripHighEdgeHit(hitsInGPU[counter]);
-        hits2sEdgeInGPU[counter2SEdge+1] = GeometryUtil::stripLowEdgeHit(hitsInGPU[counter]);
+        hits2sEdgeInGPU[hit2SEdgeMemoryCounter] = GeometryUtil::stripHighEdgeHit(hitsInGPU[hitMemoryCounter]);
+        hits2sEdgeInGPU[hit2SEdgeMemoryCounter+1] = GeometryUtil::stripLowEdgeHit(hitsInGPU[hitMemoryCounter]);
 //        hits_2s_edges_.push_back(GeometryUtil::stripHighEdgeHit(&hits_.back()));
 //        hits_.back().setHitHighEdgePtr(&(hits_2s_edges_.back()));
 //        hits_2s_edges_.push_back(GeometryUtil::stripLowEdgeHit(*hitForGPU));
 //        hits_.back().setHitLowEdgePtr(&(hits_2s_edges_.back()));
-        hits_2s_edges_.push_back(hits2sEdgeInGPU[counter2SEdge]);
-        hitsInGPU[counter].setHitHighEdgePtr(&hits2sEdgeInGPU[counter2SEdge]);
+        hits_2s_edges_.push_back(hits2sEdgeInGPU[hit2SEdgeMemoryCounter]);
+        hitsInGPU[hitMemoryCounter].setHitHighEdgePtr(&hits2sEdgeInGPU[hit2SEdgeMemoryCounter]);
 
-        hits_2s_edges_.push_back(hits2sEdgeInGPU[counter2SEdge+1]);
-        hitsInGPU[counter].setHitLowEdgePtr(&hits2sEdgeInGPU[counter2SEdge+1]);
+        hits_2s_edges_.push_back(hits2sEdgeInGPU[hit2SEdgeMemoryCounter+1]);
+        hitsInGPU[hitMemoryCounter].setHitLowEdgePtr(&hits2sEdgeInGPU[hit2SEdgeMemoryCounter+1]);
 
-        counter2SEdge+= 2;
+        hit2SEdgeMemoryCounter+= 2;
     }
 
-    counter++;
+    hitMemoryCounter++;
 }
 
 void SDL::Event::createMiniDoublets(MDAlgo algo)
@@ -342,8 +349,7 @@ void SDL::Event::initMDsInGPU()
 
 void SDL::Event::addMiniDoubletToEvent(SDL::MiniDoublet md, unsigned int detId)
 {
-    static int counter = 0;
-    if(counter == 0)
+    if(mdMemoryCounter == 0)
     {
         initMDsInGPU();
     }
@@ -351,11 +357,11 @@ void SDL::Event::addMiniDoubletToEvent(SDL::MiniDoublet md, unsigned int detId)
 
     // And get the module (if not exists, then create), and add the address to Module.hits_
     //construct a cudaMallocManaged object and send that in, so that we won't have issues in the GPU
-    mdsInGPU[counter] = md;
-    getModule(detId)->addMiniDoublet(&mdsInGPU[counter]);
-    miniDoublets_.push_back(mdsInGPU[counter]);
+    mdsInGPU[mdMemoryCounter] = md;
+    getModule(detId)->addMiniDoublet(&mdsInGPU[mdMemoryCounter]);
+    miniDoublets_.push_back(mdsInGPU[mdMemoryCounter]);
     // And get the layer
-    counter++;
+    mdMemoryCounter++;
 }
 
 
